@@ -29,16 +29,16 @@ dict_data = gzip.decompress(zf.read(find_file(".dict.dz")))
 records = []
 pos = 0
 while pos < len(idx):
-    end = idx.find(b"\\0", pos)
+    end = idx.find(b"\0", pos)
     if end < 0 or end + 9 > len(idx):
         raise RuntimeError("Malformed StarDict index")
     word = idx[pos:end].decode("utf-8", "replace").strip()
     offset, size = struct.unpack(">II", idx[end+1:end+9])
     raw = dict_data[offset:offset+size].decode("utf-8", "replace")
-    raw = re.sub(r"<br\\s*/?>", " · ", raw, flags=re.I)
+    raw = re.sub(r"<br\s*/?>", " · ", raw, flags=re.I)
     raw = re.sub(r"</(p|div|li)>", " · ", raw, flags=re.I)
     meaning = html.unescape(re.sub(r"<[^>]+>", " ", raw))
-    meaning = re.sub(r"\\s+", " ", meaning).strip(" ·;")
+    meaning = re.sub(r"\s+", " ", meaning).strip(" ·;")
     if word and meaning:
         records.append((word, meaning))
     pos = end + 9
@@ -59,7 +59,7 @@ if syn_names:
     syn = zf.read(syn_names[0])
     pos = 0
     while pos < len(syn):
-        end = syn.find(b"\\0", pos)
+        end = syn.find(b"\0", pos)
         if end < 0 or end + 5 > len(syn): break
         alias = syn[pos:end].decode("utf-8", "replace").strip()
         entry_no = struct.unpack(">I", syn[end+1:end+5])[0]
@@ -77,5 +77,5 @@ notice = ["VocaPro offline English-German dictionary", "Source: Daniel Gregorini
 for name in notice_files:
     notice.append(f"===== {name} =====")
     notice.append(zf.read(name).decode("utf-8", "replace"))
-(ASSETS / "DICTIONARY_ATTRIBUTION.txt").write_text("\\n".join(notice), encoding="utf-8")
+(ASSETS / "DICTIONARY_ATTRIBUTION.txt").write_text("\n".join(notice), encoding="utf-8")
 print(f"Built {count:,} offline entries; database size: {db_path.stat().st_size:,} bytes")

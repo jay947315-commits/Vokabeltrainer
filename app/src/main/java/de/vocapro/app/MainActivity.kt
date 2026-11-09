@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -411,61 +413,118 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     val accuracy = learner.accuracy(q.category)
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("🧠 Dein Lerntrainer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("🔥 $run Serie", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        }
-        Text("Die App wählt Aufgaben nach deinen Fehlern und deinem Wiederholungsplan.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            AssistChip(onClick = {}, label = { Text("$due fällig") }, leadingIcon = { Icon(Icons.Default.Replay, null) })
-            AssistChip(onClick = {}, label = { Text("$sessionCorrect / $sessionCount richtig") }, leadingIcon = { Icon(Icons.Default.Insights, null) })
-        }
-        Spacer(Modifier.height(12.dp))
-        LinearProgressIndicator(progress = { (sessionCount.coerceAtMost(10) / 10f) }, modifier = Modifier.fillMaxWidth())
-        Text("Deine Übung · ${sessionCount.coerceAtMost(10)} / 10", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
-        Spacer(Modifier.height(18.dp))
-        Text(q.category.uppercase(Locale.GERMANY), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Text("Dein bisheriger Trefferwert: ${accuracy}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(q.prompt, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 18.dp))
-        q.options.forEach { option ->
-            OutlinedButton(
-                onClick = {
-                    if (!answered) {
-                        selected = option
-                        correct = option == q.answer
-                        answered = true
-                        sessionCount++
-                        learner.recordAnswer(q.category, correct)
-                        if (correct) { run++; sessionCorrect++; onReward(10) } else run = 0
+        // Scroll only the lesson content. The action button stays visible at the bottom.
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("🧠 Dein Lerntrainer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("🔥 $run Serie", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
+            Text("Wie bei Duolingo: antworte, lerne aus der Erklärung und mach direkt weiter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                AssistChip(onClick = {}, label = { Text("$due fällig") }, leadingIcon = { Icon(Icons.Default.Replay, null) })
+                AssistChip(onClick = {}, label = { Text("$sessionCorrect / $sessionCount richtig") }, leadingIcon = { Icon(Icons.Default.Insights, null) })
+            }
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(progress = { (sessionCount.coerceAtMost(10) / 10f) }, modifier = Modifier.fillMaxWidth())
+            Text("Deine Übung · ${sessionCount.coerceAtMost(10)} / 10", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(18.dp))
+            Text(q.category.uppercase(Locale.GERMANY), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text("Dein bisheriger Trefferwert: ${accuracy}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(q.prompt, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 18.dp))
+
+            q.options.forEach { option ->
+                val isRightAnswer = answered && option == q.answer
+                val isWrongSelection = answered && option == selected && !correct
+                OutlinedButton(
+                    onClick = {
+                        if (!answered) {
+                            selected = option
+                            correct = option == q.answer
+                            answered = true
+                            sessionCount++
+                            learner.recordAnswer(q.category, correct)
+                            if (correct) { run++; sessionCorrect++; onReward(10) } else run = 0
+                        }
+                    },
+                    enabled = !answered,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = when {
+                            isRightAnswer -> Color(0xFF174D32)
+                            isWrongSelection -> Color(0xFF5A2525)
+                            else -> Color.Transparent
+                        },
+                        contentColor = if (isRightAnswer || isWrongSelection) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(option, modifier = Modifier.weight(1f))
+                        if (isRightAnswer) Icon(Icons.Default.CheckCircle, contentDescription = "Richtige Antwort")
+                        else if (isWrongSelection) Icon(Icons.Default.Cancel, contentDescription = "Deine Antwort war falsch")
                     }
-                },
-                enabled = !answered,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) { Text(option, modifier = Modifier.fillMaxWidth()) }
-        }
-        if (answered) {
-            Card(Modifier.fillMaxWidth().padding(top = 14.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF173D2C) else MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(if (correct) "Richtig! +10 XP 🎉" else "Noch nicht – wir wiederholen das bald.", fontWeight = FontWeight.Bold)
-                    Text("Richtige Antwort: ${q.answer}", modifier = Modifier.padding(top = 5.dp))
-                    Text(q.explanation, modifier = Modifier.padding(top = 7.dp))
-                    Text(if (correct) "Diese Aufgabe kommt später zur Festigung wieder." else "Diese Aufgabe wird in etwa 15 Minuten erneut eingeplant.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 7.dp))
                 }
             }
+
+            if (answered) {
+                Card(
+                    Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (correct) Color(0xFF174D32) else Color(0xFF492626),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text(
+                            if (correct) "Richtig! +10 XP 🎉" else "Nicht ganz – aus Fehlern lernst du!",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("Richtige Antwort: ${q.answer}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                        Text("Warum? ${q.explanation}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            if (correct) "Super! Diese Regel wird später erneut abgefragt."
+                            else "Kein Problem. Diese Aufgabe kommt in etwa 15 Minuten wieder.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    "Tipp: Lies den Satz genau. Nach deiner Antwort erklären wir dir die Regel Schritt für Schritt.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp)
+                )
+            }
+        }
+
+        if (answered) {
             Button(
                 onClick = {
                     index = learner.nextIndex(topics)
                     learner.markShown(topics[index])
                     answered = false
                     selected = ""
+                    correct = false
                     if (sessionCount >= 10) { sessionCount = 0; sessionCorrect = 0 }
                 },
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
-            ) { Text(if (sessionCount >= 10) "Neue 10-Minuten-Runde starten" else "Weiter zur nächsten Aufgabe  →") }
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(if (sessionCount >= 10) "Runde abschließen · weiterlernen" else "Weiter  →")
+            }
         } else {
-            Text("Tipp: Versuche erst selbst zu antworten. Die Erklärung zeigt dir danach, warum es richtig ist.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+            Text(
+                "Wähle eine Antwort, um weiterzumachen.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+            )
         }
     }
 }

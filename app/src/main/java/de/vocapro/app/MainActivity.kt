@@ -377,48 +377,92 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
 }
 
 @Composable private fun GrammarPage(onReward: (Int) -> Unit) {
-    var selected by remember { mutableIntStateOf(-1) }
-    var quizIndex by remember { mutableIntStateOf(0) }
+    var lessonIndex by remember { mutableIntStateOf(0) }
     var answer by remember { mutableStateOf("") }
     var checked by remember { mutableStateOf(false) }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Text("Englische Zeitformen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Lerne zuerst die Regel, dann erkenne sie im Satz. Tippe eine Zeitform an.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
+    var completed by remember { mutableIntStateOf(0) }
+
+    val tense = tenses[lessonIndex]
+    val question = grammarQuestions.firstOrNull { it.category == tense.name }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Dein Lernpfad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("⭐ $completed / ${tenses.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         }
-        items(tenses) { tense ->
-            val i = tenses.indexOf(tense)
-            Card(Modifier.fillMaxWidth().clickable { selected = if (selected == i) -1 else i }) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text(tense.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); Icon(if (selected == i) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }
-                    Text(tense.pattern, color = MaterialTheme.colorScheme.primary)
-                    if (selected == i) {
-                        HorizontalDivider(Modifier.padding(vertical = 9.dp))
-                        Text("Wann benutzt man das?", fontWeight = FontWeight.SemiBold)
-                        Text(tense.use)
-                        Text("Beispiel: ${tense.example}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                        Text(tense.translation, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        val q = grammarQuestions.firstOrNull { it.category == tense.name }
-                        if (q != null) {
-                            Text("Merke: ${q.explanation}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        Text("Lektion für Lektion – nach jeder Antwort geht es direkt weiter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(progress = { (lessonIndex + if (checked) 1f else 0f) / tenses.size.toFloat() }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(18.dp))
+
+        if (lessonIndex < tenses.size) {
+            Text("LEKTION ${lessonIndex + 1} VON ${tenses.size}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text(tense.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+            Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("So bildest du die Zeitform", fontWeight = FontWeight.Bold)
+                    Text(tense.pattern, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp))
+                    Text("Wann benutzt man sie?", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+                    Text(tense.use)
+                    Text("Beispiel: ${tense.example}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+                    Text(tense.translation, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            if (question != null) {
+                Text("Jetzt bist du dran!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 18.dp))
+                Text(question.prompt, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 10.dp))
+                question.options.forEach { option ->
+                    OutlinedButton(
+                        onClick = {
+                            if (!checked) {
+                                answer = option
+                                checked = true
+                                if (option == question.answer) {
+                                    completed++
+                                    onReward(15)
+                                }
+                            }
+                        },
+                        enabled = !checked,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text(option, modifier = Modifier.fillMaxWidth()) }
+                }
+                if (checked) {
+                    Card(Modifier.fillMaxWidth().padding(top = 10.dp), colors = CardDefaults.cardColors(containerColor = if (answer == question.answer) Color(0xFF173D2C) else MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(if (answer == question.answer) "Richtig! +15 XP 🎉" else "Fast! So lautet die richtige Antwort: ${question.answer}", fontWeight = FontWeight.Bold)
+                            Text(question.explanation, modifier = Modifier.padding(top = 6.dp))
                         }
                     }
                 }
+            } else {
+                Text("Merke dir die Regel und gehe zur nächsten Lektion.", modifier = Modifier.padding(top = 16.dp))
             }
-        }
-        item {
-            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-            Text("Mini-Prüfung", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            val q = grammarQuestions[quizIndex]
-            Text(q.prompt, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 10.dp))
-            q.options.forEach { option ->
-                OutlinedButton(onClick = { if (!checked) { answer = option; checked = true; if (option == q.answer) onReward(15) } }, enabled = !checked, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) { Text(option, modifier = Modifier.fillMaxWidth()) }
+
+            Button(
+                onClick = {
+                    if (lessonIndex < tenses.lastIndex) {
+                        lessonIndex++
+                        answer = ""
+                        checked = false
+                    } else {
+                        lessonIndex = tenses.size
+                    }
+                },
+                enabled = question == null || checked,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            ) {
+                Text(if (lessonIndex == tenses.lastIndex) "Lernpfad abschließen" else "Weiter zur nächsten Lektion  →")
             }
-            if (checked) {
-                Text(if (answer == q.answer) "Richtig! +15 XP" else "Richtige Antwort: ${q.answer}")
-                Text(q.explanation, style = MaterialTheme.typography.bodySmall)
-                Button(onClick = { quizIndex = (quizIndex + 1) % grammarQuestions.size; answer = ""; checked = false }) { Text("Weiter üben") }
+        } else {
+            Spacer(Modifier.height(32.dp))
+            Text("Geschafft! 🎉", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text("Du hast alle ${tenses.size} Zeitformen-Lektionen durchlaufen. Bleib dran und sammle weiter XP!", modifier = Modifier.padding(vertical = 12.dp))
+            Text("Richtige Antworten: $completed", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Button(onClick = { lessonIndex = 0; answer = ""; checked = false; completed = 0 }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Text("Lernpfad erneut starten")
             }
         }
     }

@@ -27,6 +27,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private data class Word(val en: String, val de: String, val sentence: String)
 private data class Tense(val name: String, val pattern: String, val use: String, val example: String, val translation: String)
@@ -380,39 +382,97 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
 }
 
 @Composable private fun VocabularyPage(onSpeak: (String) -> Unit, onReward: (Int) -> Unit) {
-    var index by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val dictionary = remember { OfflineDictionary(context.applicationContext) }
+    var search by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf(words.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }) }
+    var total by remember { mutableIntStateOf(0) }
+    var current by remember { mutableStateOf<DictionaryEntry?>(null) }
     var reveal by remember { mutableStateOf(false) }
     var known by remember { mutableIntStateOf(0) }
-    var search by remember { mutableStateOf("") }
-    val word = words[index.coerceIn(0, words.lastIndex)]
-    val filtered = remember(search) { words.filter { it.en.contains(search.trim(), true) || it.de.contains(search.trim(), true) } }
+    var usingFullDictionary by remember { mutableStateOf(false) }
+
+    LaunchedEffect(search) {
+        val loaded = withContext(Dispatchers.IO) {
+            val count = dictionary.count()
+            count to if (count > 0) dictionary.search(search, 120) else emptyList()
+        }
+        total = loaded.first
+        usingFullDictionary = total > 0
+        results = if (usingFullDictionary) loaded.second else words.filter {
+            it.en.contains(search.trim(), true) || it.de.contains(search.trim(), true)
+        }.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+        if (current == null || (search.isNotBlank() && results.none { it.word.equals(current?.word, true) })) {
+            current = results.firstOrNull()
+            reveal = false
+        }
+    }
+
+    val selected = current
     Column(Modifier.fillMaxSize()) {
         Text("Englisch–Deutsch Wörterbuch", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("${words.size} Wörter direkt offline · Deutsch ist deine Erklärungssprache", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), label = { Text("Englisches oder deutsches Wort suchen") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) })
-        Text("${filtered.size} Treffer", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
+        Text(
+            if (usingFullDictionary) "${total} Einträge · vollständig offline durchsuchbar"
+            else "Offline-Lernwortschatz · Wörterbuch wird im Build vorbereitet",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = search, onValueChange = { search = it },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            label = { Text("Englisches oder deutsches Wort suchen") },
+            singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }
+        )
+        Text(
+            if (usingFullDictionary) "${results.size} passende Treffer angezeigt" else "${results.size} Treffer",
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
+        )
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(filtered) { item ->
-                Row(Modifier.fillMaxWidth().clickable { index = words.indexOf(item); reveal = true }.padding(vertical = 7.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text(item.en, fontWeight = FontWeight.SemiBold); Text(item.de, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
-                    IconButton(onClick = { onSpeak(item.en) }) { Icon(Icons.Default.VolumeUp, "Aussprache anhören") }
+            items(results, key = { it.word }) { item ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { current = item; reveal = true }
+                        .padding(vertical = 7.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.word, fontWeight = FontWeight.SemiBold)
+                        Text(item.meaning, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                    }
+                    IconButton(onClick = { onSpeak(item.word) }) { Icon(Icons.Default.VolumeUp, "Aussprache anhören") }
                 }
                 HorizontalDivider()
             }
-            if (filtered.isEmpty()) item { Text("Kein Treffer in diesem Offline-Wortschatz.", modifier = Modifier.padding(12.dp)) }
+            if (results.isEmpty()) item { Text("Kein Treffer. Prüfe die Schreibweise.", modifier = Modifier.padding(12.dp)) }
         }
-        Text("Lernkarte · Wort ${index + 1} von ${words.size} · $known gewusst", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
-        Card(Modifier.fillMaxWidth().clickable { reveal = !reveal }, shape = RoundedCornerShape(18.dp)) {
+        Text("Lernkarte · $known gewusst · +5 XP pro richtiger Karte", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+        Card(
+            Modifier.fillMaxWidth().clickable { if (selected != null) reveal = !reveal },
+            shape = RoundedCornerShape(18.dp)
+        ) {
             Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (reveal) word.de else word.en, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                if (reveal) Text(word.sentence, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
+                Text(selected?.word ?: "Kein Wort ausgewählt", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                if (reveal && selected != null) Text(selected.meaning, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
                 Text(if (reveal) "Tippe zum Verdecken" else "Tippe zum Aufdecken", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            OutlinedButton(onClick = { onSpeak(word.en) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.VolumeUp, null); Text("Anhören") }
-            Button(onClick = { if (reveal) { known++; onReward(5) }; index = (index + 1) % words.size; reveal = false }, modifier = Modifier.weight(1f)) { Text(if (reveal) "Gewusst +5 XP" else "Nächstes Wort") }
+            OutlinedButton(onClick = { selected?.let { onSpeak(it.word) } }, modifier = Modifier.weight(1f), enabled = selected != null) {
+                Icon(Icons.Default.VolumeUp, null); Text("Anhören")
+            }
+            Button(onClick = {
+                if (reveal && selected != null) { known++; onReward(5) }
+                reveal = false
+                current = results.randomOrNull() ?: words.random().let { DictionaryEntry(it.en, it.de) }
+            }, modifier = Modifier.weight(1f), enabled = results.isNotEmpty()) {
+                Text(if (reveal) "Gewusst +5 XP" else "Zufälliges Wort")
+            }
         }
+        Text(
+            "Datenquelle: Wiktionary / Kaikki und WordNet · CC BY-SA 4.0. Offline-Nutzung ohne Konto oder Internet.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 

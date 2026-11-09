@@ -42,7 +42,103 @@ private val words = listOf(
     Word("necessary","notwendig","Sleep is necessary for learning."), Word("thought","Gedanke","That is an interesting thought."),
     Word("throughout","während / überall","It rained throughout the night."), Word("instead","stattdessen","Let's walk instead."),
     Word("careful","vorsichtig","Be careful when you cross the road."), Word("probably","wahrscheinlich","She will probably arrive soon."),
-    Word("experience","Erfahrung","Experience makes you better."), Word("to remember","sich erinnern","Remember the new words.")
+    Word("experience","Erfahrung","Experience makes you better."), Word("to remember","sich erinnern","Remember the new words."),
+    Word("about","über","Tell me about your day."),
+    Word("above","oberhalb","The picture is above the sofa."),
+    Word("across","über","We walked across the street."),
+    Word("action","Handlung","Every action has a result."),
+    Word("actually","tatsächlich","I actually enjoyed the film."),
+    Word("advice","Rat","Thank you for your advice."),
+    Word("afraid","ängstlich","She is afraid of spiders."),
+    Word("after","nach","Let's meet after school."),
+    Word("again","wieder","Please say that again."),
+    Word("age","Alter","What is your age?"),
+    Word("agree","zustimmen","I agree with you."),
+    Word("almost","fast","We are almost there."),
+    Word("already","schon","I have already eaten."),
+    Word("always","immer","He always arrives early."),
+    Word("answer","Antwort","Do you know the answer?"),
+    Word("appear","erscheinen","A rainbow appeared."),
+    Word("apple","Apfel","I eat an apple every day."),
+    Word("around","herum","We walked around the park."),
+    Word("arrive","ankommen","The bus will arrive soon."),
+    Word("ask","fragen","Can I ask a question?"),
+    Word("beautiful","schön","What a beautiful day!"),
+    Word("because","weil","I stayed home because it rained."),
+    Word("become","werden","She wants to become a doctor."),
+    Word("begin","beginnen","The lesson begins at nine."),
+    Word("believe","glauben","I believe you."),
+    Word("between","zwischen","The shop is between the bank and the cafe."),
+    Word("break","Pause","Let's take a short break."),
+    Word("bring","bringen","Please bring your book."),
+    Word("build","bauen","They build houses."),
+    Word("busy","beschäftigt","I am busy today."),
+    Word("buy","kaufen","We need to buy some milk."),
+    Word("call","anrufen","Call me when you arrive."),
+    Word("change","ändern","Things can change quickly."),
+    Word("choose","auswählen","Choose your favourite colour."),
+    Word("city","Stadt","Berlin is a large city."),
+    Word("clear","klar","Is the instruction clear?"),
+    Word("close","schließen","Please close the door."),
+    Word("come","kommen","Come here, please."),
+    Word("common","häufig","This is a common mistake."),
+    Word("country","Land","Which country are you from?"),
+    Word("create","erschaffen","We can create something new."),
+    Word("different","verschieden","We have different ideas."),
+    Word("difficult","schwierig","This exercise is difficult."),
+    Word("early","früh","I get up early."),
+    Word("easy","einfach","The first question is easy."),
+    Word("enough","genug","We have enough time."),
+    Word("every","jeder","I practise every day."),
+    Word("family","Familie","My family is very kind."),
+    Word("feel","fühlen","How do you feel today?"),
+    Word("find","finden","I cannot find my keys."),
+    Word("finish","beenden","Finish your work, please."),
+    Word("follow","folgen","Follow the instructions."),
+    Word("friend","Freund","My friend lives nearby."),
+    Word("get","bekommen","I get up at seven."),
+    Word("give","geben","Give me a minute."),
+    Word("good","gut","You did a good job."),
+    Word("happen","passieren","What happened yesterday?"),
+    Word("happy","glücklich","I am happy to see you."),
+    Word("help","helfen","Can you help me?"),
+    Word("important","wichtig","Sleep is important."),
+    Word("keep","weitermachen","Keep learning every day."),
+    Word("learn","lernen","I learn English."),
+    Word("leave","verlassen","We leave at eight."),
+    Word("life","Leben","Life is full of surprises."),
+    Word("like","mögen","I like learning languages."),
+    Word("listen","zuhören","Listen carefully."),
+    Word("little","wenig","I need a little help."),
+    Word("look","schauen","Look at this picture."),
+    Word("make","machen","Let's make a plan."),
+    Word("mean","bedeuten","What does this word mean?"),
+    Word("meet","treffen","Nice to meet you."),
+    Word("money","Geld","I saved some money."),
+    Word("much","viel","Thank you very much."),
+    Word("need","brauchen","I need more practice."),
+    Word("never","nie","I never give up."),
+    Word("often","oft","We often play football."),
+    Word("people","Menschen","Many people speak English."),
+    Word("place","Ort","This is a nice place."),
+    Word("question","Frage","Ask me a question."),
+    Word("read","lesen","I read every evening."),
+    Word("right","richtig","Your answer is right."),
+    Word("same","gleich","We have the same idea."),
+    Word("say","sagen","What did you say?"),
+    Word("school","Schule","My school is nearby."),
+    Word("small","klein","The room is small."),
+    Word("speak","sprechen","Can you speak slowly?"),
+    Word("start","beginnen","Let's start now."),
+    Word("still","immer noch","I am still learning."),
+    Word("thing","Sache","One thing is important."),
+    Word("think","denken","Think before you answer."),
+    Word("understand","verstehen","I understand the rule."),
+    Word("usually","gewöhnlich","I usually walk to school."),
+    Word("want","wollen","I want to improve my English."),
+    Word("way","Weg","There is another way."),
+    Word("work","arbeiten","Practice makes the work easier."),
+    Word("write","schreiben","Write the new word down.")
 )
 
 private val tenses = listOf(
@@ -287,30 +383,36 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     var index by remember { mutableIntStateOf(0) }
     var reveal by remember { mutableStateOf(false) }
     var known by remember { mutableIntStateOf(0) }
-    val word = words[index % words.size]
+    var search by remember { mutableStateOf("") }
+    val word = words[index.coerceIn(0, words.lastIndex)]
+    val filtered = remember(search) { words.filter { it.en.contains(search.trim(), true) || it.de.contains(search.trim(), true) } }
     Column(Modifier.fillMaxSize()) {
-        Text("Vokabel-Challenge", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("Wort ${index % words.size + 1} von ${words.size} · $known sicher gewusst", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(18.dp))
-        Card(Modifier.fillMaxWidth().height(260.dp).clickable { reveal = !reveal }, shape = RoundedCornerShape(26.dp)) {
-            Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text(if (reveal) word.de else word.en, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(if (reveal) word.sentence else "Tippe auf die Karte für Bedeutung und Beispielsatz.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-                if (!reveal) IconButton(onClick = { onSpeak(word.en) }) { Icon(Icons.Default.VolumeUp, "Aussprache anhören") }
-                else Text("Beispiel anhören", color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { onSpeak(word.sentence) }.padding(8.dp))
+        Text("Englisch–Deutsch Wörterbuch", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("${words.size} Wörter direkt offline · Deutsch ist deine Erklärungssprache", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), label = { Text("Englisches oder deutsches Wort suchen") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) })
+        Text("${filtered.size} Treffer", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            items(filtered) { item ->
+                Row(Modifier.fillMaxWidth().clickable { index = words.indexOf(item); reveal = true }.padding(vertical = 7.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(item.en, fontWeight = FontWeight.SemiBold); Text(item.de, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+                    IconButton(onClick = { onSpeak(item.en) }) { Icon(Icons.Default.VolumeUp, "Aussprache anhören") }
+                }
+                HorizontalDivider()
+            }
+            if (filtered.isEmpty()) item { Text("Kein Treffer in diesem Offline-Wortschatz.", modifier = Modifier.padding(12.dp)) }
+        }
+        Text("Lernkarte · Wort ${index + 1} von ${words.size} · $known gewusst", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+        Card(Modifier.fillMaxWidth().clickable { reveal = !reveal }, shape = RoundedCornerShape(18.dp)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (reveal) word.de else word.en, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                if (reveal) Text(word.sentence, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 5.dp))
+                Text(if (reveal) "Tippe zum Verdecken" else "Tippe zum Aufdecken", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
             }
         }
-        Spacer(Modifier.height(14.dp))
-        if (!reveal) Button(onClick = { reveal = true }, modifier = Modifier.fillMaxWidth()) { Text("Antwort aufdecken") }
-        else {
-            Text("Wie sicher sitzt das Wort?")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { index++; reveal = false }, modifier = Modifier.weight(1f)) { Text("Nochmal") }
-                Button(onClick = { known++; onReward(5); index++; reveal = false }, modifier = Modifier.weight(1f)) { Text("Gewusst! +5 XP") }
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            OutlinedButton(onClick = { onSpeak(word.en) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.VolumeUp, null); Text("Anhören") }
+            Button(onClick = { if (reveal) { known++; onReward(5) }; index = (index + 1) % words.size; reveal = false }, modifier = Modifier.weight(1f)) { Text(if (reveal) "Gewusst +5 XP" else "Nächstes Wort") }
         }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = { onSpeak(word.en) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.VolumeUp, null); Spacer(Modifier.width(6.dp)); Text("Englische Aussprache") }
     }
 }
 

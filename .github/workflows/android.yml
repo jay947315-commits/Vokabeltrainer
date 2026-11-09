@@ -22,6 +22,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Build offline English-German dictionary
+        run: python3 scripts/build_dictionary.py
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK

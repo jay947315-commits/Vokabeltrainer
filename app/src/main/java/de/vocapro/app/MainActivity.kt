@@ -143,6 +143,49 @@ private val words = listOf(
     Word("write","schreiben","Write the new word down.")
 )
 
+
+private val level78Words = listOf(
+    Word("to achieve", "erreichen", "You can achieve more than you think."),
+    Word("although", "obwohl", "Although it was raining, we went outside."),
+    Word("to argue", "streiten / argumentieren", "They often argue about football."),
+    Word("behaviour", "Verhalten", "Good behaviour is important in class."),
+    Word("to borrow", "ausleihen", "Can I borrow your dictionary?"),
+    Word("to complain", "sich beschweren", "He complained about the noise."),
+    Word("confident", "selbstbewusst", "She feels confident before the test."),
+    Word("consequence", "Folge", "Every decision has a consequence."),
+    Word("to convince", "überzeugen", "I tried to convince my friend."),
+    Word("dangerous", "gefährlich", "It is dangerous to swim here."),
+    Word("development", "Entwicklung", "The development took several years."),
+    Word("to discover", "entdecken", "They discovered an old castle."),
+    Word("environment", "Umwelt", "We should protect the environment."),
+    Word("to expect", "erwarten", "I didn't expect this result."),
+    Word("experience", "Erfahrung / erleben", "It was an unforgettable experience."),
+    Word("to fail", "scheitern / durchfallen", "Don't be afraid to fail."),
+    Word("freedom", "Freiheit", "Everyone deserves freedom."),
+    Word("to improve", "verbessern", "Practice helps you improve."),
+    Word("independent", "unabhängig", "She is becoming more independent."),
+    Word("to influence", "beeinflussen", "Friends can influence our choices."),
+    Word("knowledge", "Wissen", "Knowledge grows when you stay curious."),
+    Word("to manage", "bewältigen / schaffen", "He managed to solve the problem."),
+    Word("nevertheless", "dennoch", "It was difficult; nevertheless, we continued."),
+    Word("opportunity", "Gelegenheit", "This is a great opportunity."),
+    Word("ordinary", "gewöhnlich", "It was an ordinary school day."),
+    Word("to participate", "teilnehmen", "Everyone can participate in the project."),
+    Word("to persuade", "überreden", "She persuaded me to join the team."),
+    Word("probably", "wahrscheinlich", "They will probably arrive soon."),
+    Word("to realise", "erkennen / merken", "I realised my mistake."),
+    Word("reliable", "zuverlässig", "He is a reliable teammate."),
+    Word("responsibility", "Verantwortung", "Taking care of a pet is a responsibility."),
+    Word("to solve", "lösen", "Can you solve this riddle?"),
+    Word("solution", "Lösung", "We found a clever solution."),
+    Word("to suggest", "vorschlagen", "I suggest taking a short break."),
+    Word("throughout", "während / überall", "It rained throughout the night."),
+    Word("to avoid", "vermeiden", "Try to avoid making the same mistake."),
+    Word("valuable", "wertvoll", "Your time is valuable."),
+    Word("various", "verschiedene", "We discussed various ideas."),
+    Word("to wonder", "sich fragen", "I wonder what will happen next.")
+)
+
 private val tenses = listOf(
     Tense("Simple Present","I play / he plays","Gewohnheiten, Fakten und regelmäßige Handlungen","She plays tennis every week.","Sie spielt jede Woche Tennis."),
     Tense("Present Continuous","am/is/are + verb-ing","Was gerade jetzt oder vorübergehend passiert","I am reading a book now.","Ich lese gerade ein Buch."),
@@ -403,7 +446,9 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             it.en.contains(search.trim(), true) || it.de.contains(search.trim(), true)
         }.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
         if (current == null || (search.isNotBlank() && results.none { it.word.equals(current?.word, true) })) {
-            current = results.firstOrNull()
+            current = if (search.isBlank() && current == null) {
+                level78Words.randomOrNull()?.let { DictionaryEntry(it.en, it.de + " · " + it.sentence) } ?: results.firstOrNull()
+            } else results.firstOrNull()
             reveal = false
         }
     }
@@ -411,6 +456,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     val selected = current
     Column(Modifier.fillMaxSize()) {
         Text("Englisch–Deutsch Wörterbuch", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Lernstart: Wortschatz ab Klasse 7/8 · einfache Grundwörter werden nicht als Startkarten verwendet.", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         Text(
             if (usingFullDictionary) "${total} Einträge · vollständig offline durchsuchbar"
             else "Offline-Lernwortschatz · Wörterbuch wird im Build vorbereitet",
@@ -462,7 +508,8 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             Button(onClick = {
                 if (reveal && selected != null) { known++; onReward(5) }
                 reveal = false
-                current = results.randomOrNull() ?: words.random().let { DictionaryEntry(it.en, it.de) }
+                current = level78Words.randomOrNull()?.let { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+                    ?: results.randomOrNull()
             }, modifier = Modifier.weight(1f), enabled = results.isNotEmpty()) {
                 Text(if (reveal) "Gewusst +5 XP" else "Zufälliges Wort")
             }

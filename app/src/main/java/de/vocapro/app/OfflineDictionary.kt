@@ -6,7 +6,7 @@ import java.io.File
 
 data class DictionaryEntry(val word: String, val meaning: String)
 
-class OfflineDictionary(context: Context) {
+class OfflineDictionary(private val context: Context) {
     private val dbFile = File(context.filesDir, "en_de_dictionary.db")
     @Volatile private var database: SQLiteDatabase? = null
 

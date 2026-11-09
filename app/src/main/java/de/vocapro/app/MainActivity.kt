@@ -239,6 +239,64 @@ private class ProgressStore(context: Context) {
     }
 }
 
+/**
+ * Lightweight offline spaced-repetition scheduler.
+ * Correct answers return after 1, 3, 7... days; mistakes return after 15 minutes.
+ */
+private class AdaptiveLearning(context: Context) {
+    private val prefs = context.getSharedPreferences("vocapro_adaptive", Context.MODE_PRIVATE)
+    private fun key(topic: String, suffix: String) = "${topic.lowercase(Locale.ROOT).hashCode()}_$suffix"
+    fun attempts(topic: String) = prefs.getInt(key(topic, "attempts"), 0)
+    fun correctCount(topic: String) = prefs.getInt(key(topic, "correct"), 0)
+    fun dueAt(topic: String) = prefs.getLong(key(topic, "due"), 0L)
+    fun isDue(topic: String, now: Long = System.currentTimeMillis()) = dueAt(topic) <= now
+
+    fun recordAnswer(topic: String, wasCorrect: Boolean) {
+        val attempts = attempts(topic) + 1
+        val correct = correctCount(topic) + if (wasCorrect) 1 else 0
+        val streak = prefs.getInt(key(topic, "streak"), 0)
+        val nextStreak = if (wasCorrect) streak + 1 else 0
+        val ease = prefs.getFloat(key(topic, "ease"), 2.2f)
+        val nextEase = if (wasCorrect) (ease + 0.05f).coerceAtMost(2.8f) else (ease - 0.2f).coerceAtLeast(1.3f)
+        val intervalMs = if (!wasCorrect) 15L * 60L * 1000L else when (nextStreak) {
+            1 -> 24L * 60L * 60L * 1000L
+            2 -> 3L * 24L * 60L * 60L * 1000L
+            else -> (7.0 * 24.0 * 60.0 * 60.0 * 1000.0 * Math.pow(nextEase.toDouble(), (nextStreak - 2).coerceAtMost(5).toDouble())).toLong()
+        }
+        prefs.edit()
+            .putInt(key(topic, "attempts"), attempts)
+            .putInt(key(topic, "correct"), correct)
+            .putInt(key(topic, "streak"), nextStreak)
+            .putFloat(key(topic, "ease"), nextEase)
+            .putLong(key(topic, "due"), System.currentTimeMillis() + intervalMs)
+            .putLong(key(topic, "last"), System.currentTimeMillis())
+            .apply()
+    }
+
+    fun markShown(topic: String) {
+        if (attempts(topic) == 0 && prefs.getLong(key(topic, "last"), 0L) == 0L) {
+            prefs.edit().putLong(key(topic, "last"), System.currentTimeMillis()).apply()
+        }
+    }
+
+    fun nextIndex(topics: List<String>): Int {
+        if (topics.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        val unseen = topics.indices.filter { attempts(topics[it]) == 0 && prefs.getLong(key(topics[it], "last"), 0L) == 0L }
+        if (unseen.isNotEmpty()) return unseen.first()
+        val due = topics.indices.filter { dueAt(topics[it]) <= now }
+        val candidates = if (due.isNotEmpty()) due else topics.indices.toList()
+        return candidates.minWithOrNull(
+            compareBy<Int> { dueAt(topics[it]) }
+                .thenByDescending { attempts(topics[it]) - correctCount(topics[it]) }
+                .thenBy { prefs.getLong(key(topics[it], "last"), 0L) }
+        ) ?: 0
+    }
+
+    fun dueCount(topics: List<String>): Int = topics.count { isDue(it) }
+    fun accuracy(topic: String): Int = if (attempts(topic) == 0) 0 else (correctCount(topic) * 100 / attempts(topic))
+}
+
 class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -319,7 +377,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             }
         }
         item { Text("Was möchtest du heute trainieren?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-        item { FeatureCard("⚡","10-Minuten-Training","Gemischte Übungen für schnelles Lernen","Training",onNavigate) }
+        item { FeatureCard("🧠","Dein intelligentes Training","Übt zuerst deine Fehler und fällige Wiederholungen – passt sich dir an.","Training",onNavigate) }
         item { FeatureCard("📚","Grammatik-Meister","Alle 13 Zeitformen verstehen und anwenden","Grammatik",onNavigate) }
         item { FeatureCard("🧠","Vokabel-Challenge","Wörter merken, hören und wiederholen","Vokabeln",onNavigate) }
         item { FeatureCard("📷","Foto-Scan","Englische Texte aus Bildern erkennen","Scan",onNavigate) }
@@ -338,41 +396,77 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
 }
 
 @Composable private fun TrainingPage(onReward: (Int) -> Unit) {
-    var index by remember { mutableIntStateOf(Random.nextInt(grammarQuestions.size)) }
+    val context = LocalContext.current
+    val learner = remember { AdaptiveLearning(context.applicationContext) }
+    val topics = remember { grammarQuestions.map { it.category } }
+    var index by remember { mutableIntStateOf(learner.nextIndex(topics)) }
     var answered by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf("") }
     var correct by remember { mutableStateOf(false) }
     var run by remember { mutableIntStateOf(0) }
-    var best by remember { mutableIntStateOf(0) }
+    var sessionCount by remember { mutableIntStateOf(0) }
+    var sessionCorrect by remember { mutableIntStateOf(0) }
     val q = grammarQuestions[index]
+    val due = learner.dueCount(topics)
+    val accuracy = learner.accuracy(q.category)
+
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("⚡ Blitz-Training", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("🔥 $run richtig") }
-        Text("Gemischte Grammatik-Fragen – lies den Satz und entscheide bewusst.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("🧠 Dein Lerntrainer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("🔥 $run Serie", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        }
+        Text("Die App wählt Aufgaben nach deinen Fehlern und deinem Wiederholungsplan.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            AssistChip(onClick = {}, label = { Text("$due fällig") }, leadingIcon = { Icon(Icons.Default.Replay, null) })
+            AssistChip(onClick = {}, label = { Text("$sessionCorrect / $sessionCount richtig") }, leadingIcon = { Icon(Icons.Default.Insights, null) })
+        }
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(progress = { (sessionCount.coerceAtMost(10) / 10f) }, modifier = Modifier.fillMaxWidth())
+        Text("Deine Übung · ${sessionCount.coerceAtMost(10)} / 10", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
         Spacer(Modifier.height(18.dp))
-        LinearProgressIndicator(progress = { ((index % grammarQuestions.size) + 1) / grammarQuestions.size.toFloat() }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(22.dp))
         Text(q.category.uppercase(Locale.GERMANY), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Text("Dein bisheriger Trefferwert: ${accuracy}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(q.prompt, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 18.dp))
         q.options.forEach { option ->
-            OutlinedButton(onClick = {
-                if (!answered) {
-                    selected = option; correct = option == q.answer; answered = true
-                    if (correct) { run++; best = maxOf(best, run); onReward(10) } else run = 0
-                }
-            }, enabled = !answered, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(16.dp)) { Text(option, modifier = Modifier.fillMaxWidth()) }
+            OutlinedButton(
+                onClick = {
+                    if (!answered) {
+                        selected = option
+                        correct = option == q.answer
+                        answered = true
+                        sessionCount++
+                        learner.recordAnswer(q.category, correct)
+                        if (correct) { run++; sessionCorrect++; onReward(10) } else run = 0
+                    }
+                },
+                enabled = !answered,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) { Text(option, modifier = Modifier.fillMaxWidth()) }
         }
         if (answered) {
             Card(Modifier.fillMaxWidth().padding(top = 14.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF173D2C) else MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text(if (correct) "Richtig! +10 XP 🎉" else "Noch nicht – aus Fehlern lernt man.", fontWeight = FontWeight.Bold)
+                    Text(if (correct) "Richtig! +10 XP 🎉" else "Noch nicht – wir wiederholen das bald.", fontWeight = FontWeight.Bold)
                     Text("Richtige Antwort: ${q.answer}", modifier = Modifier.padding(top = 5.dp))
                     Text(q.explanation, modifier = Modifier.padding(top = 7.dp))
+                    Text(if (correct) "Diese Aufgabe kommt später zur Festigung wieder." else "Diese Aufgabe wird in etwa 15 Minuten erneut eingeplant.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 7.dp))
                 }
             }
-            Button(onClick = { index = (index + Random.nextInt(1, grammarQuestions.size)).mod(grammarQuestions.size); answered = false; selected = "" }, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) { Text("Nächste Frage") }
+            Button(
+                onClick = {
+                    index = learner.nextIndex(topics)
+                    learner.markShown(topics[index])
+                    answered = false
+                    selected = ""
+                    if (sessionCount >= 10) { sessionCount = 0; sessionCorrect = 0 }
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
+            ) { Text(if (sessionCount >= 10) "Neue 10-Minuten-Runde starten" else "Weiter zur nächsten Aufgabe  →") }
+        } else {
+            Text("Tipp: Versuche erst selbst zu antworten. Die Erklärung zeigt dir danach, warum es richtig ist.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
         }
-        Spacer(Modifier.height(8.dp))
-        Text("Bestleistung in dieser Runde: $best richtige Antworten", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -382,8 +476,9 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     var checked by remember { mutableStateOf(false) }
     var completed by remember { mutableIntStateOf(0) }
 
-    val tense = tenses[lessonIndex]
-    val question = grammarQuestions.firstOrNull { it.category == tense.name }
+    val finished = lessonIndex >= tenses.size
+    val tense = tenses.getOrNull(lessonIndex)
+    val question = tense?.let { item -> grammarQuestions.firstOrNull { it.category == item.name } }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -395,7 +490,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
         LinearProgressIndicator(progress = { (lessonIndex + if (checked) 1f else 0f) / tenses.size.toFloat() }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(18.dp))
 
-        if (lessonIndex < tenses.size) {
+        if (!finished && tense != null) {
             Text("LEKTION ${lessonIndex + 1} VON ${tenses.size}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             Text(tense.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
             Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
@@ -545,18 +640,39 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 Text(if (reveal) "Tippe zum Verdecken" else "Tippe zum Aufdecken", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
             }
         }
+        val learner = remember { AdaptiveLearning(context.applicationContext) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             OutlinedButton(onClick = { selected?.let { onSpeak(it.word) } }, modifier = Modifier.weight(1f), enabled = selected != null) {
                 Icon(Icons.Default.VolumeUp, null); Text("Anhören")
             }
-            Button(onClick = {
-                if (reveal && selected != null) { known++; onReward(5) }
-                reveal = false
-                current = level78Words.randomOrNull()?.let { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
-                    ?: results.randomOrNull()
-            }, modifier = Modifier.weight(1f), enabled = results.isNotEmpty()) {
-                Text(if (reveal) "Gewusst +5 XP" else "Zufälliges Wort")
-            }
+            OutlinedButton(
+                onClick = {
+                    selected?.let { learner.recordAnswer("word:${it.word}", false) }
+                    reveal = false
+                    current = level78Words.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+                        .filter { learner.isDue("word:${it.word}") }
+                        .minByOrNull { learner.dueAt("word:${it.word}") }
+                        ?: level78Words.randomOrNull()?.let { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = selected != null && reveal
+            ) { Text("Nochmal") }
+            Button(
+                onClick = {
+                    selected?.let {
+                        learner.recordAnswer("word:${it.word}", true)
+                        known++
+                        onReward(5)
+                    }
+                    reveal = false
+                    current = level78Words.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+                        .filter { learner.isDue("word:${it.word}") }
+                        .minByOrNull { learner.dueAt("word:${it.word}") }
+                        ?: level78Words.randomOrNull()?.let { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+                },
+                modifier = Modifier.weight(1f),
+                enabled = selected != null && reveal
+            ) { Text("Gewusst +5 XP") }
         }
         Text(
             "Datenquelle: Wiktionary / Kaikki und WordNet · CC BY-SA 4.0. Offline-Nutzung ohne Konto oder Internet.",

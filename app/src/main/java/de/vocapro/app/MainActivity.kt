@@ -563,6 +563,21 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
 }
 
 
+private fun learningMeaning(raw: String): String {
+    val parts = raw.split(" · ").map { part ->
+        val germanPart = part.split(" — ", " – ", " - ").firstOrNull()?.trim().orEmpty()
+        germanPart
+            .replace(Regex("^/[^/]+/\\s*"), "")
+            .replace(Regex("^(?:(?:prop\\.?|adj\\.?|adv\\.?|pron\\.?|prep\\.?|conj\\.?|interj\\.?|n\\.?|v\\.?|vi\\.?|vt\\.?|phr\\.?|abbr\\.?)\\s*)+"), "")
+            .replace(Regex("^\\d+\\.\\s*"), "")
+            .replace(Regex("^\\([^)]{1,30}\\)\\s*"), "")
+            .trim()
+    }.filter { it.isNotBlank() && it.length <= 90 }
+    // In the bundled dictionary the final segment is often the actual German
+    // translation; earlier segments can be phonetics or English explanations.
+    return (parts.lastOrNull() ?: raw.trim()).take(90).ifBlank { raw.take(90) }
+}
+
 @Composable private fun VocabularyTrainingPage(onSpeak: (String) -> Unit, onReward: (Int) -> Unit) {
     val context = LocalContext.current
     val dictionary = remember { OfflineDictionary(context.applicationContext) }
@@ -632,7 +647,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                     }.padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(item.word, fontWeight = FontWeight.SemiBold)
-                            Text(item.meaning, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                            Text(learningMeaning(item.meaning), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                         }
                         Checkbox(checked = isSelected, onCheckedChange = { checked ->
                             if (checked && selected.size < 30) selected.add(item)
@@ -653,7 +668,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             if (current == null) emptyList() else if (reverseMode) {
                 (listOf(current.word) + deck.filter { it.word != current.word }.map { it.word }.distinct().shuffled().take(3)).shuffled()
             } else {
-                (listOf(current.meaning) + deck.filter { it.word != current.word }.map { it.meaning }.distinct().shuffled().take(3)).shuffled()
+                (listOf(learningMeaning(current.meaning)) + deck.filter { it.word != current.word }.map { learningMeaning(it.meaning) }.distinct().shuffled().take(3)).distinct().shuffled()
             }
         }
         fun submitAnswer(value: String) {
@@ -663,7 +678,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 fun clean(text: String) = text.lowercase(Locale.ROOT).trim()
                     .replace(Regex("[^\\p{L}\\p{N} ]"), "")
                     .replace(Regex("\\s+"), " ")
-                val expected = if (reverseMode) item.word else item.meaning.substringBefore(" · ")
+                val expected = if (reverseMode) item.word else learningMeaning(item.meaning)
                 correct = if (mode == "Schreiben") {
                     item.meaning.substringBefore(" · ").split(Regex("[/;,]")).any { clean(it) == clean(value) }
                 } else clean(value) == clean(expected)
@@ -689,7 +704,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                     Text("Höre genau hin.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 18.dp))
                     OutlinedButton(onClick = { onSpeak(current.word) }) { Icon(Icons.Default.VolumeUp, null); Text("Wort anhören") }
                 } else {
-                    Text(if (mode == "Zuordnen") current.meaning else current.word, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
+                    Text(if (mode == "Zuordnen") learningMeaning(current.meaning) else current.word, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
                     if (mode != "Schreiben") OutlinedButton(onClick = { onSpeak(current.word) }) { Icon(Icons.Default.VolumeUp, null); Text("Aussprache") }
                 }
                 if (mode == "Schreiben") {
@@ -709,7 +724,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 if (answered) Card(Modifier.fillMaxWidth().padding(top = 12.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF174D32) else Color(0xFF492626), contentColor = Color.White)) {
                     Column(Modifier.padding(14.dp)) {
                         Text(if (correct) "Richtig! +5 XP " else "Noch nicht – so lernst du es!", fontWeight = FontWeight.Bold)
-                        Text("Richtige Antwort: ${if (reverseMode) current.word else current.meaning}", modifier = Modifier.padding(top = 6.dp))
+                        Text("Richtige Antwort: ${if (reverseMode) current.word else learningMeaning(current.meaning)}", modifier = Modifier.padding(top = 6.dp))
                         Text(if (correct) "Dieses Wort wird später wiederholt." else "Das Wort kommt in etwa 15 Minuten erneut.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                     }
                 }

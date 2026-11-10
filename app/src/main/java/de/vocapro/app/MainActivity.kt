@@ -776,6 +776,24 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
 @Composable private fun VocabularyPage(onSpeak: (String) -> Unit, onReward: (Int) -> Unit, onTrain: () -> Unit) {
     val context = LocalContext.current
     val dictionary = remember { OfflineDictionary(context.applicationContext) }
+    val customStore = remember { CustomWordStore(context.applicationContext) }
+    var customWords by remember { mutableStateOf(customStore.load()) }
+    var showAddWord by remember { mutableStateOf(false) }
+    var ownEnglish by remember { mutableStateOf("") }
+    var ownGerman by remember { mutableStateOf("") }
+    val importWords = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val parsed = content.lineSequence().mapNotNull { line ->
+                    val parts = line.split('\t', ';', ',').map { it.trim() }
+                    if (parts.size >= 2 && parts[0].isNotBlank() && parts[1].isNotBlank() && !parts[0].equals("english", true)) DictionaryEntry(parts[0], parts[1]) else null
+                }.toList()
+                customStore.addAll(parsed)
+                customWords = customStore.load()
+            } catch (_: Exception) { }
+        }
+    }
     var search by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(words.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }) }
     var total by remember { mutableIntStateOf(0) }
@@ -784,16 +802,18 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     var known by remember { mutableIntStateOf(0) }
     var usingFullDictionary by remember { mutableStateOf(false) }
 
-    LaunchedEffect(search) {
+    LaunchedEffect(search, customWords) {
         val loaded = withContext(Dispatchers.IO) {
             val count = dictionary.count()
             count to if (count > 0) dictionary.search(search, 120) else emptyList()
         }
         total = loaded.first
         usingFullDictionary = total > 0
-        results = if (usingFullDictionary) loaded.second else words.filter {
+        val base = if (usingFullDictionary) loaded.second else words.filter {
             it.en.contains(search.trim(), true) || it.de.contains(search.trim(), true)
         }.map { DictionaryEntry(it.en, it.de + " · " + it.sentence) }
+        val personal = customWords.filter { search.isBlank() || it.word.contains(search, true) || it.meaning.contains(search, true) }
+        results = (personal + base).distinctBy { it.word.lowercase(Locale.ROOT) }
         if (current == null || (search.isNotBlank() && results.none { it.word.equals(current?.word, true) })) {
             current = if (search.isBlank() && current == null) {
                 level78Words.randomOrNull()?.let { DictionaryEntry(it.en, it.de + " · " + it.sentence) } ?: results.firstOrNull()

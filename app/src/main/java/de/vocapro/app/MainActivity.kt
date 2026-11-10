@@ -824,7 +824,54 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
 
     val selected = current
     Column(Modifier.fillMaxSize()) {
+        if (showAddWord) AlertDialog(
+            onDismissRequest = { showAddWord = false },
+            title = { Text("Eigenes Wort hinzufügen") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = ownEnglish, onValueChange = { ownEnglish = it }, label = { Text("Englisch") }, singleLine = true)
+                    OutlinedTextField(value = ownGerman, onValueChange = { ownGerman = it }, label = { Text("Deutsch") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (ownEnglish.isNotBlank() && ownGerman.isNotBlank()) {
+                        customStore.addAll(listOf(DictionaryEntry(ownEnglish.trim(), ownGerman.trim())))
+                        customWords = customStore.load()
+                        ownEnglish = ""; ownGerman = ""; showAddWord = false
+                    }
+                }) { Text("Speichern") }
+            },
+            dismissButton = { TextButton(onClick = { showAddWord = false }) { Text("Abbrechen") } }
+        )
         Text("Englisch–Deutsch Wörterbuch", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = { showAddWord = true }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Text("Eigenes Wort") }
+            OutlinedButton(onClick = { importWords.launch("text/*") }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.FileOpen, null); Text("Import") }
+        }
+        if (customWords.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Deine Wortliste · \${customWords.size}", fontWeight = FontWeight.Bold)
+                        TextButton(onClick = {
+                            val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, customStore.exportText())
+                            context.startActivity(Intent.createChooser(intent, "Wortliste exportieren"))
+                        }) { Text("Export") }
+                    }
+                    customWords.take(4).forEach { item ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(item.word, fontWeight = FontWeight.SemiBold)
+                                Text(item.meaning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { customStore.remove(item); customWords = customStore.load() }) { Icon(Icons.Default.DeleteOutline, "Wort löschen") }
+                        }
+                    }
+                    if (customWords.size > 4) Text("Weitere Wörter: \${customWords.size - 4}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         Button(onClick = onTrain, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Icon(Icons.Default.Bolt, null); Spacer(Modifier.width(8.dp)); Text("Eigene Vokabeln trainieren") }
         Text("Lernstart: Wortschatz ab Klasse 7/8 · einfache Grundwörter werden nicht als Startkarten verwendet.", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         Text(

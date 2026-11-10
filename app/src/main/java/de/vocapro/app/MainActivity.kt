@@ -327,9 +327,9 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     MaterialTheme(colorScheme = scheme) {
         Scaffold(bottomBar = {
             NavigationBar {
-                listOf("Start","Training","Grammatik","Vokabeln","Scan").forEach { item ->
+                listOf("Start","Training","Grammatik","Vokabeln","Worttraining","Scan").forEach { item ->
                     NavigationBarItem(selected = page == item, onClick = { page = item }, icon = {
-                        Icon(when(item) { "Start" -> Icons.Default.Home; "Training" -> Icons.Default.Bolt; "Grammatik" -> Icons.Default.MenuBook; "Vokabeln" -> Icons.Default.Style; else -> Icons.Default.DocumentScanner }, contentDescription = item)
+                        Icon(when(item) { "Start" -> Icons.Default.Home; "Training" -> Icons.Default.Bolt; "Grammatik" -> Icons.Default.MenuBook; "Vokabeln" -> Icons.Default.Style; "Worttraining" -> Icons.Default.Bolt; else -> Icons.Default.DocumentScanner }, contentDescription = item)
                     }, label = { Text(item) })
                 }
             }
@@ -347,7 +347,8 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                     "Start" -> Dashboard(xp, streak, todayCount, onNavigate = { page = it })
                     "Training" -> TrainingPage(onReward = ::reward)
                     "Grammatik" -> GrammarPage(onReward = ::reward)
-                    "Vokabeln" -> VocabularyPage(onSpeak, onReward = ::reward)
+                    "Vokabeln" -> VocabularyPage(onSpeak, onReward = ::reward, onTrain = { page = "Worttraining" })
+                    "Worttraining" -> VocabularyTrainingPage(onSpeak, onReward = ::reward)
                     else -> ScanPage()
                 }
             }
@@ -529,6 +530,126 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     }
 }
 
+
+@Composable private fun VocabularyTrainingPage(onSpeak: (String) -> Unit, onReward: (Int) -> Unit) {
+    val context = LocalContext.current
+    val dictionary = remember { OfflineDictionary(context.applicationContext) }
+    val learner = remember { AdaptiveLearning(context.applicationContext) }
+    var search by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf(emptyList<DictionaryEntry>()) }
+    val selected = remember { mutableStateListOf<DictionaryEntry>() }
+    var deck by remember { mutableStateOf(emptyList<DictionaryEntry>()) }
+    var index by remember { mutableIntStateOf(0) }
+    var choice by remember { mutableStateOf("") }
+    var answered by remember { mutableStateOf(false) }
+    var correct by remember { mutableStateOf(false) }
+    var known by remember { mutableIntStateOf(0) }
+    var started by remember { mutableStateOf(false) }
+
+    LaunchedEffect(search) {
+        results = withContext(Dispatchers.IO) {
+            if (dictionary.count() > 0) dictionary.search(search, 120)
+            else (words + level78Words).distinctBy { it.en }.filter {
+                search.isBlank() || it.en.contains(search, true) || it.de.contains(search, true)
+            }.map { DictionaryEntry(it.en, it.de) }.take(120)
+        }
+    }
+    fun startTraining(items: List<DictionaryEntry>) {
+        deck = items.distinctBy { it.word.lowercase(Locale.ROOT) }.shuffled()
+        index = 0; choice = ""; answered = false; known = 0
+        started = deck.isNotEmpty()
+    }
+
+    if (!started) {
+        Column(Modifier.fillMaxSize()) {
+            Text("Vokabeltraining", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Wähle deine Wörter aus oder starte eine zufällige Runde aus dem Offline-Wörterbuch.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = {
+                val randomWords = buildList { repeat(10) { dictionary.random()?.let { add(it) } } }.distinctBy { it.word.lowercase(Locale.ROOT) }
+                startTraining(if (randomWords.size >= 4) randomWords else results.shuffled().take(10))
+            }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Icon(Icons.Default.Shuffle, null); Spacer(Modifier.width(8.dp)); Text("10 zufällige Vokabeln lernen")
+            }
+            OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), label = { Text("Vokabel suchen und auswählen") }, singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) })
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${selected.size} ausgewählt", fontWeight = FontWeight.SemiBold)
+                Text("Bis zu 30 Wörter", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            }
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(results, key = { it.word }) { item ->
+                    val isSelected = selected.any { it.word.equals(item.word, true) }
+                    Row(Modifier.fillMaxWidth().clickable {
+                        if (isSelected) selected.removeAll { it.word.equals(item.word, true) }
+                        else if (selected.size < 30) selected.add(item)
+                    }.padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.word, fontWeight = FontWeight.SemiBold)
+                            Text(item.meaning, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        }
+                        Checkbox(checked = isSelected, onCheckedChange = { checked ->
+                            if (checked && selected.size < 30) selected.add(item)
+                            else selected.removeAll { it.word.equals(item.word, true) }
+                        })
+                    }
+                    HorizontalDivider()
+                }
+            }
+            Button(onClick = { startTraining(selected.toList()) }, enabled = selected.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Text("Ausgewählte Wörter lernen · ${selected.size}")
+            }
+        }
+    } else {
+        val current = deck.getOrNull(index)
+        val choices = remember(current, deck) {
+            if (current == null) emptyList() else (listOf(current.meaning) + deck.filter { it.word != current.word }.map { it.meaning }.distinct().shuffled().take(3)).shuffled()
+        }
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Dein Vokabeltraining", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("${index + 1} / ${deck.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
+            LinearProgressIndicator(progress = { (index + if (answered) 1f else 0f) / deck.size.coerceAtLeast(1).toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+            if (current != null) {
+                Text("Was bedeutet dieses Wort?", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp))
+                Text(current.word, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
+                OutlinedButton(onClick = { onSpeak(current.word) }) { Icon(Icons.Default.VolumeUp, null); Text(" Aussprache") }
+                choices.forEach { option ->
+                    OutlinedButton(onClick = {
+                        if (!answered) {
+                            choice = option; correct = option == current.meaning; answered = true
+                            learner.recordAnswer("word:${current.word}", correct)
+                            if (correct) { known++; onReward(5) }
+                        }
+                    }, enabled = !answered, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = when {
+                            answered && option == current.meaning -> Color(0xFF174D32)
+                            answered && option == choice && !correct -> Color(0xFF5A2525)
+                            else -> Color.Transparent
+                        },
+                        contentColor = if (answered && (option == current.meaning || option == choice)) Color.White else MaterialTheme.colorScheme.onSurface
+                    )) { Text(option, modifier = Modifier.fillMaxWidth()) }
+                }
+                if (answered) Card(Modifier.fillMaxWidth().padding(top = 12.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF174D32) else Color(0xFF492626), contentColor = Color.White)) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(if (correct) "Richtig! +5 XP 🎉" else "Noch nicht – so lernst du es!", fontWeight = FontWeight.Bold)
+                        Text("${current.word} = ${current.meaning}", modifier = Modifier.padding(top = 6.dp))
+                        Text(if (correct) "Dieses Wort wird später wiederholt." else "Das Wort kommt in etwa 15 Minuten erneut.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            if (answered) Button(onClick = {
+                if (index < deck.lastIndex) { index++; choice = ""; answered = false }
+                else { started = false; selected.clear() }
+            }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                Text(if (index < deck.lastIndex) "Weiter  →" else "Runde abschließen")
+            } else Text("Gewusst: $known von ${deck.size}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
+            TextButton(onClick = { started = false; selected.clear() }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Auswahl ändern") }
+        }
+    }
+}
+
 @Composable private fun GrammarPage(onReward: (Int) -> Unit) {
     var lessonIndex by remember { mutableIntStateOf(0) }
     var answer by remember { mutableStateOf("") }
@@ -622,7 +743,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     }
 }
 
-@Composable private fun VocabularyPage(onSpeak: (String) -> Unit, onReward: (Int) -> Unit) {
+@Composable private fun VocabularyPage(onSpeak: (String) -> Unit, onReward: (Int) -> Unit, onTrain: () -> Unit) {
     val context = LocalContext.current
     val dictionary = remember { OfflineDictionary(context.applicationContext) }
     var search by remember { mutableStateOf("") }
@@ -654,6 +775,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     val selected = current
     Column(Modifier.fillMaxSize()) {
         Text("Englisch–Deutsch Wörterbuch", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Button(onClick = onTrain, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Icon(Icons.Default.Bolt, null); Spacer(Modifier.width(8.dp)); Text("Eigene Vokabeln trainieren") }
         Text("Lernstart: Wortschatz ab Klasse 7/8 · einfache Grundwörter werden nicht als Startkarten verwendet.", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         Text(
             if (usingFullDictionary) "${total} Einträge · vollständig offline durchsuchbar"

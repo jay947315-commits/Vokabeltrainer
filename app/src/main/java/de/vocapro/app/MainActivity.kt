@@ -1,6 +1,7 @@
 package de.vocapro.app
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
@@ -313,18 +314,22 @@ class MainActivity : ComponentActivity() {
 private fun VocaProApp(onSpeak: (String) -> Unit) {
     val context = LocalContext.current
     val store = remember { ProgressStore(context) }
-    var dark by remember { mutableStateOf(true) }
+    var dark by remember { mutableStateOf(store.int("dark", 1) == 1) }
     var page by remember { mutableStateOf("Start") }
     var xp by remember { mutableIntStateOf(store.int("xp")) }
     var streak by remember { mutableIntStateOf(store.int("streak")) }
     var todayCount by remember { mutableIntStateOf(if (store.string("count_day") == todayKey()) store.int("today_count") else 0) }
-    val scheme = if (dark) darkColorScheme(primary = Color(0xFFB6C8FF), secondary = Color(0xFFB9D6C5), background = Color(0xFF10131A), surface = Color(0xFF1A202B)) else lightColorScheme(primary = Color(0xFF315DA8))
+    val scheme = if (dark) {
+        darkColorScheme(primary = Color(0xFF7B6DFF), secondary = Color(0xFF17B978), background = Color(0xFF12132B), surface = Color(0xFF1D2044), surfaceVariant = Color(0xFF2C3060), onSurface = Color(0xFFEEF0FF))
+    } else {
+        lightColorScheme(primary = Color(0xFF5A4DF5), secondary = Color(0xFF17B978), background = Color(0xFFF3F5FF), surface = Color.White, surfaceVariant = Color(0xFFE2E5F6), onSurface = Color(0xFF1C1F3A))
+    }
     fun reward(points: Int) {
         xp += points; store.setInt("xp", xp)
         todayCount++; store.setInt("today_count", todayCount); store.setString("count_day", todayKey())
         streak = store.recordStudy()
     }
-    MaterialTheme(colorScheme = scheme) {
+    MaterialTheme(colorScheme = scheme, shapes = Shapes(small = RoundedCornerShape(14.dp), medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(24.dp))) {
         Scaffold(bottomBar = {
             NavigationBar {
                 listOf("Start","Training","Grammatik","Vokabeln","Worttraining","Scan").forEach { item ->
@@ -340,7 +345,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                         Text("VocaPro", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                         Text("Jeden Tag ein bisschen sicherer.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = { dark = !dark }) { Icon(if (dark) Icons.Default.LightMode else Icons.Default.DarkMode, "Design wechseln") }
+                    IconButton(onClick = { dark = !dark; store.setInt("dark", if (dark) 1 else 0) }) { Icon(if (dark) Icons.Default.LightMode else Icons.Default.DarkMode, "Design wechseln") }
                 }
                 Spacer(Modifier.height(12.dp))
                 when(page) {
@@ -364,35 +369,34 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text("Dein Lern-Boost", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("Kurze Einheiten. Langfristiger Erfolg.") }
-                        Text("🔥", style = MaterialTheme.typography.headlineLarge)
+                        Text("", style = MaterialTheme.typography.headlineLarge)
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Metric("🔥 $streak", "Tage Streak")
+                        Metric(" $streak", "Tage Streak")
                         Metric("⭐ $xp", "XP gesammelt")
-                        Metric("🏅 $level", "Level")
+                        Metric(" $level", "Level")
                     }
                     Spacer(Modifier.height(14.dp))
                     Text("Tagesziel: $todayCount / 10 richtige Übungen")
                     LinearProgressIndicator(progress = { (todayCount / 10f).coerceIn(0f,1f) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
-                    Text(if (todayCount >= 10) "Tagesziel geschafft – stark! 🎉" else "Noch ${10-todayCount} bis zum Tagesziel. Du schaffst das!", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp))
+                    Text(if (todayCount >= 10) "Tagesziel geschafft – stark! " else "Noch ${10-todayCount} bis zum Tagesziel. Du schaffst das!", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp))
                 }
             }
         }
         item { Text("Was möchtest du heute trainieren?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-        item { FeatureCard("🧠","Dein intelligentes Training","Übt zuerst deine Fehler und fällige Wiederholungen – passt sich dir an.","Training",onNavigate) }
-        item { FeatureCard("📚","Grammatik-Meister","Alle 13 Zeitformen verstehen und anwenden","Grammatik",onNavigate) }
-        item { FeatureCard("🧠","Vokabel-Challenge","Wörter merken, hören und wiederholen","Vokabeln",onNavigate) }
-        item { FeatureCard("📷","Foto-Scan","Englische Texte aus Bildern erkennen","Scan",onNavigate) }
+        item { FeatureCard("Dein intelligentes Training","Übt zuerst deine Fehler und fällige Wiederholungen – passt sich dir an.","Training",onNavigate) }
+        item { FeatureCard("Grammatik-Meister","Alle 13 Zeitformen verstehen und anwenden","Grammatik",onNavigate) }
+        item { FeatureCard("Vokabel-Challenge","Wörter merken, hören und wiederholen","Vokabeln",onNavigate) }
+        item { FeatureCard("Foto-Scan","Englische Texte aus Bildern erkennen","Scan",onNavigate) }
         item { Text("Lern-Tipp: Wiederhole lieber täglich 10 Minuten als einmal pro Woche eine Stunde. Verteiltes Üben hilft deinem Gedächtnis.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
     }
 }
 @Composable private fun Metric(value: String, label: String) { Column { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-@Composable private fun FeatureCard(emoji: String, title: String, subtitle: String, page: String, onNavigate: (String) -> Unit) {
+@Composable private fun FeatureCard(title: String, subtitle: String, page: String, onNavigate: (String) -> Unit) {
     Card(Modifier.fillMaxWidth().clickable { onNavigate(page) }, shape = RoundedCornerShape(20.dp)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(emoji, style = MaterialTheme.typography.headlineMedium)
-            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) { Text(title, fontWeight = FontWeight.Bold); Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+            Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
             Icon(Icons.Default.ArrowForward, null)
         }
     }
@@ -419,8 +423,8 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("🧠 Dein Lerntrainer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("🔥 $run Serie", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text(" Dein Lerntrainer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(" $run Serie", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
             Text("Wie bei Duolingo: antworte, lerne aus der Erklärung und mach direkt weiter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
@@ -480,7 +484,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 ) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text(
-                            if (correct) "Richtig! +10 XP 🎉" else "Nicht ganz – aus Fehlern lernst du!",
+                            if (correct) "Richtig! +10 XP " else "Nicht ganz – aus Fehlern lernst du!",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -632,7 +636,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 }
                 if (answered) Card(Modifier.fillMaxWidth().padding(top = 12.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF174D32) else Color(0xFF492626), contentColor = Color.White)) {
                     Column(Modifier.padding(14.dp)) {
-                        Text(if (correct) "Richtig! +5 XP 🎉" else "Noch nicht – so lernst du es!", fontWeight = FontWeight.Bold)
+                        Text(if (correct) "Richtig! +5 XP " else "Noch nicht – so lernst du es!", fontWeight = FontWeight.Bold)
                         Text("${current.word} = ${current.meaning}", modifier = Modifier.padding(top = 6.dp))
                         Text(if (correct) "Dieses Wort wird später wiederholt." else "Das Wort kommt in etwa 15 Minuten erneut.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                     }
@@ -707,7 +711,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 if (checked) {
                     Card(Modifier.fillMaxWidth().padding(top = 10.dp), colors = CardDefaults.cardColors(containerColor = if (answer == question.answer) Color(0xFF173D2C) else MaterialTheme.colorScheme.surface)) {
                         Column(Modifier.padding(14.dp)) {
-                            Text(if (answer == question.answer) "Richtig! +15 XP 🎉" else "Fast! So lautet die richtige Antwort: ${question.answer}", fontWeight = FontWeight.Bold)
+                            Text(if (answer == question.answer) "Richtig! +15 XP " else "Fast! So lautet die richtige Antwort: ${question.answer}", fontWeight = FontWeight.Bold)
                             Text(question.explanation, modifier = Modifier.padding(top = 6.dp))
                         }
                     }
@@ -733,7 +737,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             }
         } else {
             Spacer(Modifier.height(32.dp))
-            Text("Geschafft! 🎉", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text("Geschafft! ", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Text("Du hast alle ${tenses.size} Zeitformen-Lektionen durchlaufen. Bleib dran und sammle weiter XP!", modifier = Modifier.padding(vertical = 12.dp))
             Text("Richtige Antworten: $completed", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             Button(onClick = { lessonIndex = 0; answer = ""; checked = false; completed = 0 }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {

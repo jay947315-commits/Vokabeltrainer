@@ -565,6 +565,9 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     val context = LocalContext.current
     val dictionary = remember { OfflineDictionary(context.applicationContext) }
     val learner = remember { AdaptiveLearning(context.applicationContext) }
+    val customWords = remember { CustomWordStore(context.applicationContext).load() }
+    var mode by remember { mutableStateOf("Auswahl") }
+    var typedAnswer by remember { mutableStateOf("") }
     var search by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<DictionaryEntry>()) }
     val selected = remember { mutableStateListOf<DictionaryEntry>() }
@@ -576,17 +579,19 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     var known by remember { mutableIntStateOf(0) }
     var started by remember { mutableStateOf(false) }
 
-    LaunchedEffect(search) {
-        results = withContext(Dispatchers.IO) {
+    LaunchedEffect(search, customWords) {
+        val found = withContext(Dispatchers.IO) {
             if (dictionary.count() > 0) dictionary.search(search, 120)
             else (words + level78Words).distinctBy { it.en }.filter {
                 search.isBlank() || it.en.contains(search, true) || it.de.contains(search, true)
             }.map { DictionaryEntry(it.en, it.de) }.take(120)
         }
+        val personal = customWords.filter { search.isBlank() || it.word.contains(search, true) || it.meaning.contains(search, true) }
+        results = (personal + found).distinctBy { it.word.lowercase(Locale.ROOT) }
     }
     fun startTraining(items: List<DictionaryEntry>) {
         deck = items.distinctBy { it.word.lowercase(Locale.ROOT) }.shuffled()
-        index = 0; choice = ""; answered = false; known = 0
+        index = 0; choice = ""; answered = false; known = 0; typedAnswer = ""
         started = deck.isNotEmpty()
     }
 
@@ -594,6 +599,17 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
         Column(Modifier.fillMaxSize()) {
             Text("Vokabeltraining", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Wähle deine Wörter aus oder starte eine zufällige Runde aus dem Offline-Wörterbuch.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Lernmodus", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Auswahl", "Schreiben").forEach { option ->
+                    FilterChip(selected = mode == option, onClick = { mode = option }, label = { Text(option) })
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Hören", "Zuordnen").forEach { option ->
+                    FilterChip(selected = mode == option, onClick = { mode = option }, label = { Text(option) })
+                }
+            }
             Button(onClick = {
                 val randomWords = buildList { repeat(10) { dictionary.random()?.let { add(it) } } }.distinctBy { it.word.lowercase(Locale.ROOT) }
                 startTraining(if (randomWords.size >= 4) randomWords else results.shuffled().take(10))
@@ -630,8 +646,29 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
         }
     } else {
         val current = deck.getOrNull(index)
-        val choices = remember(current, deck) {
-            if (current == null) emptyList() else (listOf(current.meaning) + deck.filter { it.word != current.word }.map { it.meaning }.distinct().shuffled().take(3)).shuffled()
+        val reverseMode = mode == "Hören" || mode == "Zuordnen"
+        val choices = remember(current, deck, mode) {
+            if (current == null) emptyList() else if (reverseMode) {
+                (listOf(current.word) + deck.filter { it.word != current.word }.map { it.word }.distinct().shuffled().take(3)).shuffled()
+            } else {
+                (listOf(current.meaning) + deck.filter { it.word != current.word }.map { it.meaning }.distinct().shuffled().take(3)).shuffled()
+            }
+        }
+        fun submitAnswer(value: String) {
+            val item = current ?: return
+            if (!answered) {
+                choice = value
+                fun clean(text: String) = text.lowercase(Locale.ROOT).trim()
+                    .replace(Regex("[^\\p{L}\\p{N} ]"), "")
+                    .replace(Regex("\\s+"), " ")
+                val expected = if (reverseMode) item.word else item.meaning.substringBefore(" · ")
+                correct = if (mode == "Schreiben") {
+                    item.meaning.substringBefore(" · ").split(Regex("[/;,]")).any { clean(it) == clean(value) }
+                } else clean(value) == clean(expected)
+                answered = true
+                learner.recordAnswer("word:${item.word}", correct)
+                if (correct) { known++; onReward(5) }
+            }
         }
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -640,37 +677,44 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
             }
             LinearProgressIndicator(progress = { (index + if (answered) 1f else 0f) / deck.size.coerceAtLeast(1).toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
             if (current != null) {
-                Text("Was bedeutet dieses Wort?", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp))
-                Text(current.word, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
-                OutlinedButton(onClick = { onSpeak(current.word) }) { Icon(Icons.Default.VolumeUp, null); Text(" Aussprache") }
-                choices.forEach { option ->
-                    OutlinedButton(onClick = {
-                        if (!answered) {
-                            choice = option; correct = option == current.meaning; answered = true
-                            learner.recordAnswer("word:${current.word}", correct)
-                            if (correct) { known++; onReward(5) }
-                        }
-                    }, enabled = !answered, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                Text(when (mode) {
+                    "Hören" -> "Höre das englische Wort und wähle es aus."
+                    "Zuordnen" -> "Finde das passende englische Wort."
+                    "Schreiben" -> "Schreibe die deutsche Bedeutung."
+                    else -> "Was bedeutet dieses Wort?"
+                }, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp))
+                if (mode == "Hören") {
+                    Text("Höre genau hin.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 18.dp))
+                    OutlinedButton(onClick = { onSpeak(current.word) }) { Icon(Icons.Default.VolumeUp, null); Text("Wort anhören") }
+                } else {
+                    Text(if (mode == "Zuordnen") current.meaning else current.word, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 18.dp))
+                    if (mode != "Schreiben") OutlinedButton(onClick = { onSpeak(current.word) }) { Icon(Icons.Default.VolumeUp, null); Text("Aussprache") }
+                }
+                if (mode == "Schreiben") {
+                    OutlinedTextField(value = typedAnswer, onValueChange = { typedAnswer = it }, enabled = !answered, modifier = Modifier.fillMaxWidth(), label = { Text("Deine Übersetzung") }, singleLine = true)
+                    Button(onClick = { submitAnswer(typedAnswer) }, enabled = !answered && typedAnswer.isNotBlank(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Antwort prüfen") }
+                } else choices.forEach { option ->
+                    OutlinedButton(onClick = { submitAnswer(option) }, enabled = !answered, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = when {
-                            answered && option == current.meaning -> Color(0xFF174D32)
+                            answered && option == (if (reverseMode) current.word else current.meaning) -> Color(0xFF174D32)
                             answered && option == choice && !correct -> Color(0xFF5A2525)
                             else -> Color.Transparent
                         },
-                        contentColor = if (answered && (option == current.meaning || option == choice)) Color.White else MaterialTheme.colorScheme.onSurface
+                        contentColor = if (answered && (option == (if (reverseMode) current.word else current.meaning) || option == choice)) Color.White else MaterialTheme.colorScheme.onSurface
                     )) { Text(option, modifier = Modifier.fillMaxWidth()) }
                 }
                 if (answered) Card(Modifier.fillMaxWidth().padding(top = 12.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF174D32) else Color(0xFF492626), contentColor = Color.White)) {
                     Column(Modifier.padding(14.dp)) {
                         Text(if (correct) "Richtig! +5 XP " else "Noch nicht – so lernst du es!", fontWeight = FontWeight.Bold)
-                        Text("${current.word} = ${current.meaning}", modifier = Modifier.padding(top = 6.dp))
+                        Text("Richtige Antwort: ${if (reverseMode) current.word else current.meaning}", modifier = Modifier.padding(top = 6.dp))
                         Text(if (correct) "Dieses Wort wird später wiederholt." else "Das Wort kommt in etwa 15 Minuten erneut.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
             }
             Spacer(Modifier.weight(1f))
             if (answered) Button(onClick = {
-                if (index < deck.lastIndex) { index++; choice = ""; answered = false }
+                if (index < deck.lastIndex) { index++; choice = ""; answered = false; typedAnswer = "" }
                 else { started = false; selected.clear() }
             }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Text(if (index < deck.lastIndex) "Weiter  →" else "Runde abschließen")

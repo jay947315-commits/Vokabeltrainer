@@ -398,13 +398,12 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 Column(Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text("Dein Lern-Boost", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("Kurze Einheiten. Langfristiger Erfolg.") }
-                        Text("", style = MaterialTheme.typography.headlineLarge)
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Metric(" $streak", "Tage Streak")
-                        Metric("⭐ $xp", "XP gesammelt")
-                        Metric(" $level", "Level")
+                        Metric("$streak", "Tage Streak")
+                        Metric("$xp", "XP gesammelt")
+                        Metric("$level", "Level")
                     }
                     Spacer(Modifier.height(14.dp))
                     Text("Tagesziel: $todayCount / 10 richtige Übungen")
@@ -614,7 +613,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
                 }
             }
             Button(onClick = {
-                val randomWords = buildList { repeat(10) { dictionary.random()?.let { add(it) } } }.distinctBy { it.word.lowercase(Locale.ROOT) }
+                val randomWords = (customWords.shuffled().take(3) + buildList { repeat(10) { dictionary.random()?.let { add(it) } } }).distinctBy { it.word.lowercase(Locale.ROOT) }.shuffled().take(10)
                 startTraining(if (randomWords.size >= 4) randomWords else results.shuffled().take(10))
             }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Icon(Icons.Default.Shuffle, null); Spacer(Modifier.width(8.dp)); Text("10 zufällige Vokabeln lernen")
@@ -740,7 +739,7 @@ private fun VocaProApp(onSpeak: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Dein Lernpfad", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("⭐ $completed / ${tenses.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text("$completed / ${tenses.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         }
         Text("Lektion für Lektion – nach jeder Antwort geht es direkt weiter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))

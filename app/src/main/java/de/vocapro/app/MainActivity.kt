@@ -300,6 +300,32 @@ private class AdaptiveLearning(context: Context) {
     fun accuracy(topic: String): Int = if (attempts(topic) == 0) 0 else (correctCount(topic) * 100 / attempts(topic))
 }
 
+/** Personal vocabulary lists are stored locally and work without internet. */
+private class CustomWordStore(context: Context) {
+    private val prefs = context.getSharedPreferences("vocapro_custom_words", Context.MODE_PRIVATE)
+    fun load(): List<DictionaryEntry> = try {
+        val array = org.json.JSONArray(prefs.getString("items", "[]"))
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val word = item.optString("word").trim()
+                val meaning = item.optString("meaning").trim()
+                if (word.isNotBlank() && meaning.isNotBlank()) add(DictionaryEntry(word, meaning))
+            }
+        }
+    } catch (_: Exception) { emptyList() }
+    fun addAll(entries: List<DictionaryEntry>) {
+        val merged = (load() + entries).distinctBy { it.word.trim().lowercase(Locale.ROOT) }
+        val array = org.json.JSONArray()
+        merged.forEach { array.put(org.json.JSONObject().put("word", it.word).put("meaning", it.meaning)) }
+        prefs.edit().putString("items", array.toString()).apply()
+    }
+    fun remove(entry: DictionaryEntry) {
+        addAll(load().filterNot { it.word.equals(entry.word, true) })
+    }
+    fun exportText(): String = load().joinToString("\n") { "\${it.word}\t\${it.meaning}" }
+}
+
 class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
     override fun onCreate(savedInstanceState: Bundle?) {

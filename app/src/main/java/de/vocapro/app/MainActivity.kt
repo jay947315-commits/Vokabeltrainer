@@ -326,7 +326,7 @@ private class CustomWordStore(context: Context) {
         remaining.forEach { array.put(org.json.JSONObject().put("word", it.word).put("meaning", it.meaning)) }
         prefs.edit().putString("items", array.toString()).apply()
     }
-    fun exportText(): String = load().joinToString("\n") { "\${it.word}\t\${it.meaning}" }
+    fun exportText(): String = load().joinToString("\n") { it.word + "\t" + it.meaning }
 }
 
 class MainActivity : ComponentActivity() {

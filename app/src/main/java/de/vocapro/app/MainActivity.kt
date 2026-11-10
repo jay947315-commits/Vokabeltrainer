@@ -680,7 +680,7 @@ private fun learningMeaning(raw: String): String {
                     .replace(Regex("\\s+"), " ")
                 val expected = if (reverseMode) item.word else learningMeaning(item.meaning)
                 correct = if (mode == "Schreiben") {
-                    item.meaning.substringBefore(" · ").split(Regex("[/;,]")).any { clean(it) == clean(value) }
+                    learningMeaning(item.meaning).split(Regex("[/;,]")).any { clean(it) == clean(value) }
                 } else clean(value) == clean(expected)
                 answered = true
                 learner.recordAnswer("word:${item.word}", correct)
@@ -714,11 +714,11 @@ private fun learningMeaning(raw: String): String {
                     OutlinedButton(onClick = { submitAnswer(option) }, enabled = !answered, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = when {
-                            answered && option == (if (reverseMode) current.word else current.meaning) -> Color(0xFF174D32)
+                            answered && option == (if (reverseMode) current.word else learningMeaning(current.meaning)) -> Color(0xFF174D32)
                             answered && option == choice && !correct -> Color(0xFF5A2525)
                             else -> Color.Transparent
                         },
-                        contentColor = if (answered && (option == (if (reverseMode) current.word else current.meaning) || option == choice)) Color.White else MaterialTheme.colorScheme.onSurface
+                        contentColor = if (answered && (option == (if (reverseMode) current.word else learningMeaning(current.meaning)) || option == choice)) Color.White else MaterialTheme.colorScheme.onSurface
                     )) { Text(option, modifier = Modifier.fillMaxWidth()) }
                 }
                 if (answered) Card(Modifier.fillMaxWidth().padding(top = 12.dp), colors = CardDefaults.cardColors(containerColor = if (correct) Color(0xFF174D32) else Color(0xFF492626), contentColor = Color.White)) {

@@ -321,7 +321,10 @@ private class CustomWordStore(context: Context) {
         prefs.edit().putString("items", array.toString()).apply()
     }
     fun remove(entry: DictionaryEntry) {
-        addAll(load().filterNot { it.word.equals(entry.word, true) })
+        val remaining = load().filterNot { it.word.equals(entry.word, true) }
+        val array = org.json.JSONArray()
+        remaining.forEach { array.put(org.json.JSONObject().put("word", it.word).put("meaning", it.meaning)) }
+        prefs.edit().putString("items", array.toString()).apply()
     }
     fun exportText(): String = load().joinToString("\n") { "\${it.word}\t\${it.meaning}" }
 }
